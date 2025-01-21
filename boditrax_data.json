@@ -1,0 +1,30 @@
+{
+    "weight": {
+        "value": "84.80",
+        "unit": "kg"
+    },
+    "fat": {
+        "value": "18.50",
+        "unit": "kg"
+    },
+    "muscle_mass": {
+        "value": "63.00",
+        "unit": "kg"
+    },
+    "bmr": {
+        "value": "1937",
+        "unit": ""
+    },
+    "water_mass": {
+        "value": "45.80",
+        "unit": "kg"
+    },
+    "metabolic_age": {
+        "value": "41",
+        "unit": ""
+    },
+    "bmi": {
+        "value": "24.3",
+        "unit": ""
+    }
+}

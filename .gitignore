@@ -29,4 +29,4 @@ wheels/
 *.swo
 
 # Project specific
-boditrax_data.json 
+boditrax_data.json boditrax_data.csv

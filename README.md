@@ -1,6 +1,6 @@
 # Boditrax Data Scraper
 
-A Python script to scrape body composition data from Boditrax and save it as JSON.
+A Python script to scrape body composition data from Boditrax and save it as CSV.
 
 ## Setup
 1. Install requirements: 
