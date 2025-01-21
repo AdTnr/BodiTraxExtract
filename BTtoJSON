@@ -20,7 +20,6 @@ METRICS_URLS = {
 def login_with_playwright():
     """Opens a browser for manual login and returns the cookies once authenticated."""
     with sync_playwright() as p:
-        # Configure browser context with stealth settings
         browser = p.firefox.launch(headless=False)
         context = browser.new_context(
             viewport={'width': 1920, 'height': 1080},
@@ -28,92 +27,67 @@ def login_with_playwright():
             locale='en-US',
         )
         
-        # Add additional scripts to avoid detection
-        context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-        """)
+        # Simplified stealth script
+        context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
         
         page = context.new_page()
-        
-        # Navigate directly to the member portal
         page.goto(BASE_URL)
         
-        print("Please log in manually in the browser window...")
-        print("After logging in successfully, the script will continue automatically.")
-        print("DO NOT close the browser window - it will close automatically.")
+        print("\nPlease log in manually in the browser window.")
+        print("Script will continue automatically after login.")
+        print("DO NOT close the browser window.\n")
         
-        # Wait for successful login (either Dashboard or Results page)
-        page.wait_for_url("**/member.boditrax.cloud/**", timeout=300000)  # 5 minute timeout
-        
-        # Add a small delay to ensure all cookies are set
+        # Wait for successful login with timeout
+        page.wait_for_url("**/member.boditrax.cloud/**", timeout=300000)
         time.sleep(2)
         
-        # Get all cookies after successful login
-        cookies = context.cookies()
-        
-        # Create a requests session with the browser cookies
+        # Set up session with cookies
         session = requests.Session()
-        for cookie in cookies:
+        for cookie in context.cookies():
             session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
         
-        # Close browser
         browser.close()
-        
         return session
 
 def scrape_metric(session, url):
     """Scrapes data from a specific metric page."""
-    response = session.get(url)
-    print(f"Response status for {url}: {response.status_code}")
-    
-    if response.status_code != 200:
-        print(f"Failed to fetch {url}")
-        return None
-    
-    soup = BeautifulSoup(response.text, "html.parser")
-    
-    # Try different class names based on the metric type
-    metric_element = (
-        soup.find("h3", class_="current-metric") or  # for weight, bmr, metabolic_age, bmi
-        soup.find("h3", class_="kg-metric") or       # for muscle, water
-        soup.find("h3", class_="percentage-metric")   # for fat percentage
-    )
-    
-    if metric_element:
-        # Split the value and unit (e.g., "83.30kg" -> ["83.30", "kg"])
-        text = metric_element.text.strip()
-        # Find the position where numbers end and unit begins
-        for i, char in enumerate(text):
-            if not (char.isdigit() or char == '.' or char == '-'):
-                value = text[:i].strip()
-                unit = text[i:].strip()
-                break
-        else:
-            value = text
-            unit = ""
+    try:
+        response = session.get(url)
+        if response.status_code != 200:
+            print(f"Failed to fetch {url}: Status {response.status_code}")
+            return None
         
-        print(f"Found metric: {value} {unit}")
-        return {"value": value, "unit": unit}
-    else:
-        print(f"Failed to extract data from {url}")
+        soup = BeautifulSoup(response.text, "html.parser")
+        metric_classes = ["current-metric", "kg-metric", "percentage-metric"]
+        
+        for class_name in metric_classes:
+            if metric_element := soup.find("h3", class_=class_name):
+                text = metric_element.text.strip()
+                # Find the split point between value and unit
+                split_point = next((i for i, char in enumerate(text) 
+                                  if not (char.isdigit() or char in '.-')), len(text))
+                
+                return {
+                    "value": text[:split_point].strip(),
+                    "unit": text[split_point:].strip()
+                }
+        
+        print(f"No metric found in {url}")
+        return None
+        
+    except Exception as e:
+        print(f"Error scraping {url}: {e}")
         return None
 
 def calculate_lean_body_mass(metrics):
     """Calculate Lean Body Mass from weight and fat mass."""
     try:
-        # Get weight in kg (remove 'kg' unit and convert to float)
         weight = float(metrics['weight']['value'])
-        
-        # Get fat mass in kg (using the kg-metric value)
         fat_mass = float(metrics['fat']['value'])
-        
-        # Calculate lean body mass
         lean_mass = weight - fat_mass
         
         return {
-            "value": f"{lean_mass:.2f}",  # Format to 2 decimal places
+            "value": f"{lean_mass:.2f}",
             "unit": "kg"
         }
     except (KeyError, ValueError) as e:
