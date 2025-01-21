@@ -1,0 +1,159 @@
+from playwright.sync_api import sync_playwright
+import requests
+from bs4 import BeautifulSoup
+import json
+import time
+
+# URLs for each metric
+BASE_URL = "https://member.boditrax.cloud"
+LOGIN_URL = "https://identity.boditrax.cloud/Account/Login"
+METRICS_URLS = {
+    "weight": f"{BASE_URL}/Result/Weight",
+    "fat": f"{BASE_URL}/Result/Fat",
+    "muscle_mass": f"{BASE_URL}/Result/Muscle",
+    "bmr": f"{BASE_URL}/Result/BasalMetabolicRate",
+    "water_mass": f"{BASE_URL}/Result/Water",
+    "metabolic_age": f"{BASE_URL}/Result/MetabolicAge",
+    "bmi": f"{BASE_URL}/Result/BMI",
+}
+
+def login_with_playwright():
+    """Opens a browser for manual login and returns the cookies once authenticated."""
+    with sync_playwright() as p:
+        # Configure browser context with stealth settings
+        browser = p.firefox.launch(headless=False)
+        context = browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            locale='en-US',
+        )
+        
+        # Add additional scripts to avoid detection
+        context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
+        
+        page = context.new_page()
+        
+        # Navigate directly to the member portal
+        page.goto(BASE_URL)
+        
+        print("Please log in manually in the browser window...")
+        print("After logging in successfully, the script will continue automatically.")
+        print("DO NOT close the browser window - it will close automatically.")
+        
+        # Wait for successful login (either Dashboard or Results page)
+        page.wait_for_url("**/member.boditrax.cloud/**", timeout=300000)  # 5 minute timeout
+        
+        # Add a small delay to ensure all cookies are set
+        time.sleep(2)
+        
+        # Get all cookies after successful login
+        cookies = context.cookies()
+        
+        # Create a requests session with the browser cookies
+        session = requests.Session()
+        for cookie in cookies:
+            session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
+        
+        # Close browser
+        browser.close()
+        
+        return session
+
+def scrape_metric(session, url):
+    """Scrapes data from a specific metric page."""
+    response = session.get(url)
+    print(f"Response status for {url}: {response.status_code}")
+    
+    if response.status_code != 200:
+        print(f"Failed to fetch {url}")
+        return None
+    
+    soup = BeautifulSoup(response.text, "html.parser")
+    
+    # Try different class names based on the metric type
+    metric_element = (
+        soup.find("h3", class_="current-metric") or  # for weight, bmr, metabolic_age, bmi
+        soup.find("h3", class_="kg-metric") or       # for muscle, water
+        soup.find("h3", class_="percentage-metric")   # for fat percentage
+    )
+    
+    if metric_element:
+        # Split the value and unit (e.g., "83.30kg" -> ["83.30", "kg"])
+        text = metric_element.text.strip()
+        # Find the position where numbers end and unit begins
+        for i, char in enumerate(text):
+            if not (char.isdigit() or char == '.' or char == '-'):
+                value = text[:i].strip()
+                unit = text[i:].strip()
+                break
+        else:
+            value = text
+            unit = ""
+        
+        print(f"Found metric: {value} {unit}")
+        return {"value": value, "unit": unit}
+    else:
+        print(f"Failed to extract data from {url}")
+        return None
+
+def calculate_lean_body_mass(metrics):
+    """Calculate Lean Body Mass from weight and fat mass."""
+    try:
+        # Get weight in kg (remove 'kg' unit and convert to float)
+        weight = float(metrics['weight']['value'])
+        
+        # Get fat mass in kg (using the kg-metric value)
+        fat_mass = float(metrics['fat']['value'])
+        
+        # Calculate lean body mass
+        lean_mass = weight - fat_mass
+        
+        return {
+            "value": f"{lean_mass:.2f}",  # Format to 2 decimal places
+            "unit": "kg"
+        }
+    except (KeyError, ValueError) as e:
+        print(f"Error calculating lean body mass: {e}")
+        return None
+
+def scrape_all_metrics(session):
+    """Scrapes all metrics and returns them as a dictionary."""
+    metrics = {}
+    for metric, url in METRICS_URLS.items():
+        print(f"\nScraping {metric}...")
+        data = scrape_metric(session, url)
+        if data:
+            metrics[metric] = data
+        time.sleep(1)  # Add a small delay between requests
+    
+    # Calculate and add lean body mass
+    if 'weight' in metrics and 'fat' in metrics:
+        lean_mass = calculate_lean_body_mass(metrics)
+        if lean_mass:
+            metrics['lean_body_mass'] = lean_mass
+            print(f"\nCalculated lean body mass: {lean_mass['value']} {lean_mass['unit']}")
+    
+    return metrics
+
+def save_to_json(data, filename="boditrax_data.json"):
+    """Saves the data to a JSON file."""
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
+    print(f"Data saved to {filename}")
+
+if __name__ == "__main__":
+    try:
+        # Get authenticated session through browser login
+        print("Opening browser for login...")
+        session = login_with_playwright()
+        print("Successfully logged in!")
+        
+        # Scrape the metrics
+        metrics_data = scrape_all_metrics(session)
+        save_to_json(metrics_data)
+    except Exception as e:
+        print(f"Error: {e}")
