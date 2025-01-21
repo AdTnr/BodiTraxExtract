@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import json
 import time
 import csv
+import os
 
 # URLs for each metric
 BASE_URL = "https://member.boditrax.cloud"
@@ -17,6 +18,11 @@ METRICS_URLS = {
     "metabolic_age": f"{BASE_URL}/Result/MetabolicAge",
     "bmi": f"{BASE_URL}/Result/BMI",
 }
+
+# Add this near your other constants at the top
+DESKTOP_PATH = os.path.expanduser("~/Desktop")
+DEFAULT_FILENAME = "boditrax_data.csv"
+DEFAULT_PATH = os.path.join(DESKTOP_PATH, DEFAULT_FILENAME)
 
 def login_with_playwright():
     """Opens a browser for manual login and returns the cookies once authenticated."""
@@ -114,8 +120,8 @@ def scrape_all_metrics(session):
     
     return metrics
 
-def save_to_csv(data, filename="boditrax_data.csv"):
-    """Saves the data to a CSV file."""
+def save_to_csv(data, filename=DEFAULT_PATH):
+    """Saves the data to a CSV file on the desktop."""
     if not data:
         print("No data to save")
         return

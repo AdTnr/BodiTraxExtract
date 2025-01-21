@@ -12,5 +12,5 @@ python3 BTtoJSON.py
 ## Features
 - Scrapes body composition metrics from Boditrax
 - Calculates lean body mass
-- Saves data to JSON format
+- Saves data to CSV format
 
