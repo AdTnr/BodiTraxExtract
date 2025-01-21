@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import time
+import csv
 
 # URLs for each metric
 BASE_URL = "https://member.boditrax.cloud"
@@ -113,10 +114,30 @@ def scrape_all_metrics(session):
     
     return metrics
 
-def save_to_json(data, filename="boditrax_data.json"):
-    """Saves the data to a JSON file."""
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=4)
+def save_to_csv(data, filename="boditrax_data.csv"):
+    """Saves the data to a CSV file."""
+    if not data:
+        print("No data to save")
+        return
+
+    # Prepare the headers and row
+    headers = ['metric', 'value', 'unit']
+    rows = []
+    
+    # Convert the nested dictionary structure to rows
+    for metric_name, metric_data in data.items():
+        if metric_data:  # Check if metric data exists
+            rows.append({
+                'metric': metric_name,
+                'value': metric_data['value'],
+                'unit': metric_data['unit']
+            })
+
+    # Write to CSV
+    with open(filename, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(rows)
     print(f"Data saved to {filename}")
 
 if __name__ == "__main__":
@@ -128,6 +149,6 @@ if __name__ == "__main__":
         
         # Scrape the metrics
         metrics_data = scrape_all_metrics(session)
-        save_to_json(metrics_data)
+        save_to_csv(metrics_data)
     except Exception as e:
         print(f"Error: {e}")
